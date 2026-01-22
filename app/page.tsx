@@ -37,20 +37,33 @@ print(result)`);
 
   const handleConvert = async () => {
     setIsConverting(true);
-    // Simulate conversion delay for smooth animation
-    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    try {
+      const response = await fetch('http://localhost:8000/convert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_code: inputCode,
+          source_language: sourceLanguage,
+          target_language: targetLanguage,
+        }),
+      });
 
-    const key = `${sourceLanguage}-${targetLanguage}`;
-    const conversion = mockCodeConversions[key as keyof typeof mockCodeConversions];
+      const data = await response.json();
 
-    if (conversion) {
-      setOutputCode(conversion);
-    } else {
-      // Fallback mock conversion
-      setOutputCode(`// Converted from ${sourceLanguage} to ${targetLanguage}\n// Sample output for demonstration`);
+      if (data.success) {
+        setOutputCode(data.target_code);
+      } else {
+        setOutputCode(`/* ERROR: \n${data.error} \n*/`);
+      }
+    } catch (error) {
+      console.error('Error during conversion:', error);
+      setOutputCode('// Error connecting to the compiler backend.\n// Please ensure the backend server is running (port 8000).');
+    } finally {
+      setIsConverting(false);
     }
-
-    setIsConverting(false);
   };
 
   const handleCopyInput = () => {
