@@ -115,8 +115,32 @@ class JavaLexer(BaseLexer):
                 self.advance()
                 continue
             
+            if self.current_char == '+' and self.peek() == '+':
+                self.tokens.append(self.make_token(TokenType.INCREMENT, '++'))
+                self.advance()
+                self.advance()
+                continue
+            
             if self.current_char == '-' and self.peek() == '=':
                 self.tokens.append(self.make_token(TokenType.MINUS_ASSIGN, '-='))
+                self.advance()
+                self.advance()
+                continue
+            
+            if self.current_char == '-' and self.peek() == '-':
+                self.tokens.append(self.make_token(TokenType.DECREMENT, '--'))
+                self.advance()
+                self.advance()
+                continue
+            
+            if self.current_char == '<' and self.peek() == '<':
+                self.tokens.append(self.make_token(TokenType.LSHIFT, '<<'))
+                self.advance()
+                self.advance()
+                continue
+                
+            if self.current_char == '>' and self.peek() == '>':
+                self.tokens.append(self.make_token(TokenType.RSHIFT, '>>'))
                 self.advance()
                 self.advance()
                 continue

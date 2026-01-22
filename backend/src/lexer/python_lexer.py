@@ -67,11 +67,17 @@ class PythonLexer(BaseLexer):
         
         while self.current_char is not None:
             # Handle indentation at line start
-            if at_line_start and self.current_char in ' \t':
-                indent_tokens = self.handle_indentation()
-                self.tokens.extend(indent_tokens)
-                at_line_start = False
-                continue
+            if at_line_start:
+                # Ignore blank lines and comments for indentation
+                if self.current_char not in ['\n', '#']:
+                    indent_tokens = self.handle_indentation()
+                    self.tokens.extend(indent_tokens)
+                    at_line_start = False
+                    
+                    # If we consumed whitespace, we restart loop to check next char
+                    # But if we didn't (0 indent), we fall through to process char
+                    if self.current_char in ' \t':
+                        continue
             
             # Skip whitespace (spaces, tabs)
             if self.current_char in ' \t':

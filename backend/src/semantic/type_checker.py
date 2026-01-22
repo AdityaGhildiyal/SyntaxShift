@@ -362,14 +362,36 @@ class TypeChecker:
         
         return None
     
+    def visit_break(self, node: Break) -> None:
+        """Visit Break node."""
+        pass
+
     def visit_functioncall(self, node: FunctionCall) -> Optional[str]:
         """Visit FunctionCall node and return return type."""
+        # Handle array access hack
+        if node.function_name.endswith('[]'):
+            real_name = node.function_name[:-2]
+            symbol = self.symbol_table.lookup(real_name)
+            if symbol is None:
+                self.error(f"Variable '{real_name}' is not defined")
+                return None
+            return None # Cannot infer element type easily
+
         # Look up function
         func_symbol = self.symbol_table.lookup(node.function_name)
         
         if func_symbol is None:
             # Built-in functions
-            if node.function_name in ['print', 'println', 'cout', 'len', 'range', 'list']:
+            common_builtins = ['print', 'println', 'cout', 'len', 'range', 'list', 'input', 'int', 'float', 'str', 'bool']
+            cpp_builtins = ['stoi', 'to_string', 'read_input', 'stof', 'getline', 'size', 'length']
+            java_builtins = [
+                'System.out.print', 'System.out.println', 
+                'Integer.parseInt', 'Double.parseDouble', 
+                'scanner.nextLine', 'scanner.nextInt', 'scanner.nextDouble',
+                'Math.max', 'Math.min', 'Math.sqrt', 'Math.abs'
+            ]
+            
+            if node.function_name in common_builtins + cpp_builtins + java_builtins:
                 # Visit arguments
                 for arg in node.arguments:
                     self.visit(arg)
@@ -397,6 +419,14 @@ class TypeChecker:
     
     def visit_identifier(self, node: Identifier) -> Optional[str]:
         """Visit Identifier node and return its type."""
+        # C++ Standard streams/constants
+        if self.language == 'cpp' and node.name in ['cout', 'cin', 'endl', 'std', 'string', 'vector']:
+             return 'std'
+        
+        # Java Standard classes/objects
+        if self.language == 'java' and node.name in ['System', 'String', 'Integer', 'Double', 'Math', 'Scanner', 'Object']:
+             return 'class'
+             
         symbol = self.symbol_table.lookup(node.name)
         
         if symbol is None:

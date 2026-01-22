@@ -25,6 +25,11 @@ class IRNodeType(Enum):
     LITERAL = "literal"
     IDENTIFIER = "identifier"
     BLOCK = "block"
+    BREAK = "break"
+
+
+
+
 
 
 class IRType(Enum):
@@ -72,12 +77,14 @@ class IRProgram(IRNode):
     functions: List['IRFunction'] = field(default_factory=list)
     classes: List['IRClass'] = field(default_factory=list)
     globals: List['IRVariable'] = field(default_factory=list)
+    main_body: List[IRNode] = field(default_factory=list)  # Top-level statements
     
     def __init__(self):
         super().__init__(IRNodeType.PROGRAM)
         self.functions = []
         self.classes = []
         self.globals = []
+        self.main_body = []
 
 
 @dataclass
@@ -273,3 +280,11 @@ class IRBlock(IRNode):
     def __init__(self, statements: List[IRNode] = None):
         super().__init__(IRNodeType.BLOCK)
         self.statements = statements or []
+
+
+@dataclass
+class IRBreak(IRNode):
+    """IR Break statement node."""
+    
+    def __init__(self):
+        super().__init__(IRNodeType.BREAK)

@@ -165,14 +165,14 @@ class CppLexer(BaseLexer):
             
             if self.current_char == '<' and self.peek() == '<':
                 # << operator (stream insertion or left shift)
-                self.tokens.append(self.make_token(TokenType.IDENTIFIER, '<<'))
+                self.tokens.append(self.make_token(TokenType.LSHIFT, '<<'))
                 self.advance()
                 self.advance()
                 continue
             
             if self.current_char == '>' and self.peek() == '>':
                 # >> operator (stream extraction or right shift)
-                self.tokens.append(self.make_token(TokenType.IDENTIFIER, '>>'))
+                self.tokens.append(self.make_token(TokenType.RSHIFT, '>>'))
                 self.advance()
                 self.advance()
                 continue

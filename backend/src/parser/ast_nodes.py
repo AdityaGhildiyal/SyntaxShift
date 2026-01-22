@@ -26,6 +26,11 @@ class ASTNodeType(Enum):
     LITERAL = "Literal"
     BLOCK = "Block"
     EXPRESSION_STMT = "ExpressionStatement"
+    BREAK = "Break"
+
+
+
+
 
 
 @dataclass
@@ -260,3 +265,11 @@ class ExpressionStatement(ASTNode):
     def __init__(self, expression: ASTNode):
         super().__init__(ASTNodeType.EXPRESSION_STMT)
         self.expression = expression
+
+
+@dataclass
+class Break(ASTNode):
+    """Break statement node."""
+    
+    def __init__(self):
+        super().__init__(ASTNodeType.BREAK)

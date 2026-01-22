@@ -392,13 +392,25 @@ class CppParser(BaseParser):
     
     def parse_comparison(self) -> ASTNode:
         """Parse comparison expression."""
-        left = self.parse_additive()
+        left = self.parse_shift()
         
         while self.current_token and self.current_token.type in [
             TokenType.EQUAL, TokenType.NOT_EQUAL,
             TokenType.LESS_THAN, TokenType.GREATER_THAN,
             TokenType.LESS_EQUAL, TokenType.GREATER_EQUAL
         ]:
+            op = self.current_token.value
+            self.advance()
+            right = self.parse_shift()
+            left = BinaryOp(left, op, right)
+        
+        return left
+
+    def parse_shift(self) -> ASTNode:
+        """Parse shift expression."""
+        left = self.parse_additive()
+        
+        while self.current_token and self.current_token.type in [TokenType.LSHIFT, TokenType.RSHIFT]:
             op = self.current_token.value
             self.advance()
             right = self.parse_additive()

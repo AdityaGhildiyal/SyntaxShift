@@ -62,9 +62,13 @@ class PythonParser(BaseParser):
         if self.match(TokenType.KEYWORD, 'while'):
             return self.parse_while_loop()
         
-        # For loop
         if self.match(TokenType.KEYWORD, 'for'):
             return self.parse_for_loop()
+        
+        # Break statement
+        if self.match(TokenType.KEYWORD, 'break'):
+            self.advance()
+            return Break()
         
         # Return statement
         if self.match(TokenType.KEYWORD, 'return'):

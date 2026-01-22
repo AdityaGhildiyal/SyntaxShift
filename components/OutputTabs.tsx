@@ -12,9 +12,11 @@ interface OutputTabsProps {
   isLoading: boolean;
   onCopy: () => void;
   copied: boolean;
+  ast?: any;
+  ir?: any;
 }
 
-export default function OutputTabs({ code, language, isLoading, onCopy, copied }: OutputTabsProps) {
+export default function OutputTabs({ code, language, isLoading, onCopy, copied, ast, ir }: OutputTabsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('code');
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
@@ -23,65 +25,15 @@ export default function OutputTabs({ code, language, isLoading, onCopy, copied }
     { id: 'ir', label: 'IR', icon: '⚙️' },
   ];
 
-  // Mock AST data
-  const mockAST = JSON.stringify(
-    {
-      type: 'Program',
-      body: [
-        {
-          type: 'FunctionDef',
-          name: 'fibonacci',
-          params: ['n'],
-          body: [
-            {
-              type: 'IfStatement',
-              condition: { type: 'BinaryOp', left: 'n', op: '<=', right: '1' },
-              consequent: { type: 'Return', value: 'n' },
-            },
-            {
-              type: 'Return',
-              value: {
-                type: 'BinaryOp',
-                left: { type: 'Call', name: 'fibonacci', args: ['n - 1'] },
-                op: '+',
-                right: { type: 'Call', name: 'fibonacci', args: ['n - 2'] },
-              },
-            },
-          ],
-        },
-      ],
-    },
-    null,
-    2
-  );
-
-  // Mock IR data
-  const mockIR = `; Generated IR Code
-define i32 @fibonacci(i32 %n) {
-entry:
-  %cmp = icmp sle i32 %n, 1
-  br i1 %cmp, label %if.then, label %if.else
-
-if.then:
-  ret i32 %n
-
-if.else:
-  %sub1 = sub i32 %n, 1
-  %call1 = call i32 @fibonacci(i32 %sub1)
-  %sub2 = sub i32 %n, 2
-  %call2 = call i32 @fibonacci(i32 %sub2)
-  %add = add i32 %call1, %call2
-  ret i32 %add
-}`;
-
   const getTabContent = () => {
     switch (activeTab) {
       case 'code':
         return code;
       case 'ast':
-        return mockAST;
+        return ast ? JSON.stringify(ast, null, 2) : '// No AST available';
       case 'ir':
-        return mockIR;
+        // IR from backend is JSON, format it nicely
+        return ir ? JSON.stringify(ir, null, 2) : '// No IR available';
     }
   };
 
@@ -97,11 +49,10 @@ if.else:
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
-                activeTab === tab.id
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${activeTab === tab.id
                   ? 'text-primary bg-primary/10'
                   : 'text-muted-foreground hover:text-foreground'
-              }`}
+                }`}
             >
               <span>{tab.icon}</span>
               {tab.label}

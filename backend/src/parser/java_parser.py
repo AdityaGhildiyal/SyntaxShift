@@ -43,7 +43,9 @@ class JavaParser(BaseParser):
             return None
         
         # Class definition
-        if self.match(TokenType.KEYWORD, 'class'):
+        if (self.current_token.type == TokenType.KEYWORD and self.current_token.value == 'class') or \
+           (self.current_token.type == TokenType.KEYWORD and self.current_token.value in ['public', 'private', 'protected'] and 
+            self.peek() and self.peek().type == TokenType.KEYWORD and self.peek().value == 'class'):
             return self.parse_class_def()
         
         # Method definition (public static void, etc.)
@@ -162,17 +164,27 @@ class JavaParser(BaseParser):
         
         while self.current_token and self.current_token.type != TokenType.RPAREN:
             # Parse type
-            if self.current_token.type == TokenType.KEYWORD:
+            param_type = ""
+            if self.current_token.type in [TokenType.KEYWORD, TokenType.IDENTIFIER]:
                 param_type = self.current_token.value
                 self.advance()
                 
-                # Parse name
-                param_name = self.expect(TokenType.IDENTIFIER).value
+                # Handle array type []
+                while self.current_token.type == TokenType.LBRACKET:
+                    self.advance() # Skip [
+                    if self.consume(TokenType.RBRACKET):
+                        param_type += "[]"
+            else:
+                break
                 
-                parameters.append((param_name, param_type))
-                
-                if not self.consume(TokenType.COMMA):
-                    break
+            # Parse name
+            name_token = self.expect(TokenType.IDENTIFIER)
+            param_name = name_token.value if name_token else "unknown"
+            
+            parameters.append((param_name, param_type))
+            
+            if not self.consume(TokenType.COMMA):
+                break
         
         return parameters
     
@@ -200,7 +212,7 @@ class JavaParser(BaseParser):
             ClassDef node
         """
         # Skip public/private
-        if self.current_token.value in ['public', 'private']:
+        if self.current_token.value in ['public', 'private', 'protected']:
             self.advance()
         
         self.expect(TokenType.KEYWORD, 'class')
@@ -314,37 +326,107 @@ class JavaParser(BaseParser):
         return WhileLoop(condition, body)
     
     def parse_for_loop(self) -> ForLoop:
-        """Parse for loop (simplified)."""
+        """Parse for loop (C-style and enhanced)."""
         self.expect(TokenType.KEYWORD, 'for')
         self.expect(TokenType.LPAREN)
         
-        # For simplicity, we'll parse it as: for (Type var : iterable)
-        # Skip initialization/condition/increment for now
-        var_name = ""
-        iterable = None
+        # Check if it's enhanced for loop (Type var : iterable)
+        saved_pos = self.position
+        is_enhanced = False
         
-        # Try to parse enhanced for loop
-        if self.current_token.type == TokenType.KEYWORD:
+        # Try to detect enhanced for loop
+        if self.current_token.type in [TokenType.KEYWORD, TokenType.IDENTIFIER]:
+            self.advance()  # Skip type
+            if self.current_token.type == TokenType.IDENTIFIER:
+                self.advance()  # Skip variable
+                if self.current_token.type == TokenType.COLON:
+                    is_enhanced = True
+        
+        # Restore position
+        self.position = saved_pos
+        self.current_token = self.tokens[self.position]
+        
+        if is_enhanced:
+            # Enhanced for loop: for (Type var : iterable)
             self.advance()  # Skip type
             var_name = self.expect(TokenType.IDENTIFIER).value
-            if self.consume(TokenType.COLON):
-                iterable = self.parse_expression()
-        else:
-            # Traditional for loop - skip for now
-            while self.current_token and self.current_token.type != TokenType.RPAREN:
+            self.expect(TokenType.COLON)
+            iterable = self.parse_expression()
+            self.expect(TokenType.RPAREN)
+            
+            if self.match(TokenType.LBRACE):
                 self.advance()
-        
-        self.expect(TokenType.RPAREN)
-        
-        if self.match(TokenType.LBRACE):
-            self.advance()
-            body = self.parse_block_statements()
-            self.expect(TokenType.RBRACE)
+                body = self.parse_block_statements()
+                self.expect(TokenType.RBRACE)
+            else:
+                stmt = self.parse_statement()
+                body = [stmt] if stmt else []
+            
+            return ForLoop(var_name, iterable, body)
         else:
-            stmt = self.parse_statement()
-            body = [stmt] if stmt else []
-        
-        return ForLoop(var_name, iterable, body)
+            # C-style for loop: for (init; condition; increment)
+            # Parse initialization
+            init_stmt = None
+            if not self.match(TokenType.SEMICOLON):
+                init_stmt = self.parse_statement()  # This handles variable declaration or assignment
+            else:
+                self.advance()  # Skip semicolon
+            
+            # Parse condition
+            condition = None
+            if not self.match(TokenType.SEMICOLON):
+                condition = self.parse_expression()
+            self.expect(TokenType.SEMICOLON)
+            
+            # Parse increment (i++, i--, i+=1, etc.)
+            increment_stmt = None
+            if not self.match(TokenType.RPAREN):
+                # Handle i++ or i--
+                if self.current_token.type == TokenType.IDENTIFIER:
+                    var_name = self.current_token.value
+                    self.advance()
+                    if self.current_token.type == TokenType.INCREMENT:
+                        # i++ -> i = i + 1
+                        self.advance()
+                        increment_stmt = Assignment(var_name, BinaryOp(Identifier(var_name), '+', Literal(1, 'int')), '+=')
+                    elif self.current_token.type == TokenType.DECREMENT:
+                        # i-- -> i = i - 1
+                        self.advance()
+                        increment_stmt = Assignment(var_name, BinaryOp(Identifier(var_name), '-', Literal(1, 'int')), '-=')
+                    elif self.current_token.type in [TokenType.ASSIGN, TokenType.PLUS_ASSIGN, TokenType.MINUS_ASSIGN]:
+                        # i = ..., i += ..., i -= ...
+                        op = self.current_token.value
+                        self.advance()
+                        value = self.parse_expression()
+                        increment_stmt = Assignment(var_name, value, op)
+            
+            self.expect(TokenType.RPAREN)
+            
+            # Parse body
+            if self.match(TokenType.LBRACE):
+                self.advance()
+                body = self.parse_block_statements()
+                self.expect(TokenType.RBRACE)
+            else:
+                stmt = self.parse_statement()
+                body = [stmt] if stmt else []
+            
+            # Convert C-style for to while loop (simplified approach)
+            # Add init before the loop, condition as while condition, increment at end of body
+            statements = []
+            if init_stmt:
+                statements.append(init_stmt)
+            
+            loop_body = body.copy()
+            if increment_stmt:
+                loop_body.append(increment_stmt)
+            
+            while_loop = WhileLoop(condition if condition else Literal(True, 'bool'), loop_body)
+            statements.append(while_loop)
+            
+            # Return a "fake" ForLoop that contains the while loop
+            # This is a workaround since our IR doesn't have C-style for loops
+            return Block(statements)
     
     def parse_return(self) -> Return:
         """Parse return statement."""
@@ -407,13 +489,25 @@ class JavaParser(BaseParser):
     
     def parse_comparison(self) -> ASTNode:
         """Parse comparison expression."""
-        left = self.parse_additive()
+        left = self.parse_shift()
         
         while self.current_token and self.current_token.type in [
             TokenType.EQUAL, TokenType.NOT_EQUAL,
             TokenType.LESS_THAN, TokenType.GREATER_THAN,
             TokenType.LESS_EQUAL, TokenType.GREATER_EQUAL
         ]:
+            op = self.current_token.value
+            self.advance()
+            right = self.parse_shift()
+            left = BinaryOp(left, op, right)
+        
+        return left
+
+    def parse_shift(self) -> ASTNode:
+        """Parse shift expression."""
+        left = self.parse_additive()
+        
+        while self.current_token and self.current_token.type in [TokenType.LSHIFT, TokenType.RSHIFT]:
             op = self.current_token.value
             self.advance()
             right = self.parse_additive()

@@ -33,6 +33,8 @@ class ConversionResponse(BaseModel):
     target_code: str = ""
     error: str = ""
     success: bool
+    ast: dict = {}
+    ir: dict = {}
 
 @app.get("/")
 def health_check():
@@ -93,7 +95,12 @@ def convert_code(request: ConversionRequest):
         generator = generator_map[target_lang]()
         target_code = generator.generate(ir_program)
         
-        return ConversionResponse(success=True, target_code=target_code)
+        return ConversionResponse(
+            success=True, 
+            target_code=target_code,
+            ast=ast.to_dict() if ast else {},
+            ir=ir_program.to_dict() if ir_program else {}
+        )
 
     except Exception as e:
         import traceback

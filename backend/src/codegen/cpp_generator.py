@@ -17,9 +17,22 @@ class CppGenerator(BaseGenerator):
         """Generate C++ includes."""
         self.emit("#include <iostream>")
         self.emit("#include <string>")
-        self.emit("")
         self.emit("using namespace std;")
         self.emit("")
+    
+    def generate_main(self, statements: List[IRNode]) -> None:
+        """Generate C++ main function."""
+        self.emit("int main() {")
+        self.indent()
+        
+        for stmt in statements:
+            code = self.visit(stmt)
+            if code and code.strip():
+                self.emit(code + ";")
+            
+        self.emit("return 0;")
+        self.dedent()
+        self.emit("}")
     
     def map_type(self, ir_type: IRType) -> str:
         """Map IR type to C++ type."""
@@ -54,7 +67,9 @@ class CppGenerator(BaseGenerator):
         self.indent()
         if node.body:
             for statement in node.body:
-                self.visit(statement)
+                code = self.visit(statement)
+                if code and code.strip():
+                    self.emit(code + ";")
         self.dedent()
         
         self.emit("}")
@@ -116,7 +131,9 @@ class CppGenerator(BaseGenerator):
         self.indent()
         if node.then_block:
             for statement in node.then_block:
-                self.visit(statement)
+                code = self.visit(statement)
+                if code and code.strip():
+                    self.emit(code + ";")
         self.dedent()
         self.emit("}")
         
@@ -127,7 +144,9 @@ class CppGenerator(BaseGenerator):
             self.indent()
             if elif_body:
                 for statement in elif_body:
-                    self.visit(statement)
+                    code = self.visit(statement)
+                    if code and code.strip():
+                        self.emit(code + ";")
             self.dedent()
             self.emit("}")
         
@@ -136,7 +155,9 @@ class CppGenerator(BaseGenerator):
             self.emit("else {")
             self.indent()
             for statement in node.else_block:
-                self.visit(statement)
+                code = self.visit(statement)
+                if code and code.strip():
+                    self.emit(code + ";")
             self.dedent()
             self.emit("}")
         
@@ -150,7 +171,9 @@ class CppGenerator(BaseGenerator):
         self.indent()
         if node.body:
             for statement in node.body:
-                self.visit(statement)
+                code = self.visit(statement)
+                if code and code.strip():
+                    self.emit(code + ";")
         self.dedent()
         self.emit("}")
         
@@ -164,7 +187,9 @@ class CppGenerator(BaseGenerator):
         self.indent()
         if node.body:
             for statement in node.body:
-                self.visit(statement)
+                code = self.visit(statement)
+                if code and code.strip():
+                    self.emit(code + ";")
         self.dedent()
         self.emit("}")
         
@@ -178,15 +203,32 @@ class CppGenerator(BaseGenerator):
         else:
             self.emit("return;")
         return ""
+
+    def visit_break(self, node: IRBreak) -> str:
+        """Generate C++ break statement."""
+        self.emit("break;")
+        return ""
     
     def visit_call(self, node: IRCall) -> str:
         """Generate C++ function call."""
+        # Handle array access hack from parser
+        if node.function_name.endswith('[]'):
+            real_name = node.function_name[:-2]
+            if node.arguments:
+                index = self.visit(node.arguments[0])
+                return f"{real_name}[{index}]"
+            return f"{real_name}[]"
+
         args = ', '.join([self.visit(arg) for arg in node.arguments])
         
         # Map common function names
         func_map = {
             'print': 'cout',
             'len': 'size',
+            'input': 'cin >>', 
+            'int': 'stoi',
+            'str': 'to_string',
+            'float': 'stof',
         }
         func_name = func_map.get(node.function_name, node.function_name)
         
@@ -195,6 +237,15 @@ class CppGenerator(BaseGenerator):
             if args:
                 return f"cout << {args} << endl"
             return "cout << endl"
+            
+        # Special handling for cin (input)
+        if func_name == 'cin >>':
+             # Python input(prompt) prints prompt then reads
+             # C++: cout << prompt; cin >> var;
+             # But this is an expression here. C++ cin is statement usually.
+             # Return a placeholder or handle complex logic.
+             # For now, just return a string read (mock)
+             return "read_input()" 
         
         return f"{func_name}({args})"
     

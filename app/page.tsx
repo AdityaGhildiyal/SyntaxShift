@@ -26,6 +26,8 @@ print(result)`);
   const [isConverting, setIsConverting] = useState(false);
   const [copiedOutput, setCopiedOutput] = useState(false);
   const [copiedInput, setCopiedInput] = useState(false);
+  const [astData, setAstData] = useState<any>(null);
+  const [irData, setIrData] = useState<any>(null);
 
   useEffect(() => {
     if (isDark) {
@@ -37,7 +39,7 @@ print(result)`);
 
   const handleConvert = async () => {
     setIsConverting(true);
-    
+
     try {
       const response = await fetch('http://localhost:8000/convert', {
         method: 'POST',
@@ -55,6 +57,8 @@ print(result)`);
 
       if (data.success) {
         setOutputCode(data.target_code);
+        setAstData(data.ast);
+        setIrData(data.ir);
       } else {
         setOutputCode(`/* ERROR: \n${data.error} \n*/`);
       }
@@ -164,6 +168,8 @@ print(result)`);
             isLoading={isConverting}
             onCopy={handleCopyOutput}
             copied={copiedOutput}
+            ast={astData}
+            ir={irData}
           />
         </div>
 

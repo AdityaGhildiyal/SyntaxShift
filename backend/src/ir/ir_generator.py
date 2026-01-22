@@ -21,6 +21,76 @@ class IRGenerator:
         """
         self.source_language = source_language.lower()
         self.ir_program = IRProgram()
+        self.scopes = [set()]  # Stack of defined variables
+    
+    def enter_scope(self):
+        self.scopes.append(set())
+        
+    def exit_scope(self):
+        self.scopes.pop()
+        
+    def define_var(self, name: str):
+        self.scopes[-1].add(name)
+        
+    def is_defined(self, name: str) -> bool:
+        for scope in reversed(self.scopes):
+            if name in scope:
+                return True
+        return False
+        
+    # ... (generate method unchanged)
+
+    def visit_functiondef(self, node: FunctionDef) -> IRFunction:
+        """Convert FunctionDef to IRFunction."""
+        # Map return type
+        return_type = self.map_type(node.return_type) if node.return_type else IRType.VOID
+        
+        # New scope for function
+        self.enter_scope()
+        
+        # Convert parameters
+        ir_params = []
+        for param_name, param_type in node.parameters:
+            ir_param_type = self.map_type(param_type) if param_type else IRType.ANY
+            ir_params.append((param_name, ir_param_type))
+            self.define_var(param_name)
+        
+        # Convert body
+        ir_body = []
+        for statement in node.body:
+            ir_stmt = self.visit(statement)
+            if ir_stmt:
+                ir_body.append(ir_stmt)
+        
+        self.exit_scope()
+        
+        ir_func = IRFunction(node.name, ir_params, return_type, ir_body)
+        ir_func.metadata['source_line'] = node.line
+        ir_func.metadata['source_column'] = node.column
+        
+        return ir_func
+
+    # ... (visit_classdef - technically class creates scope too, but let's stick to functions first)
+    
+    def visit_assignment(self, node: Assignment) -> IRNode:
+        """Convert Assignment to IRAssignment or IRVariable."""
+        value = self.visit(node.value)
+        
+        if self.source_language == 'python':
+            if not self.is_defined(node.target):
+                self.define_var(node.target)
+                # It's a new variable definition
+                # We inferred type as ANY (auto)
+                ir_var = IRVariable(node.target, IRType.ANY, value)
+                ir_var.metadata['source_line'] = node.line
+                ir_var.metadata['source_column'] = node.column
+                return ir_var
+        
+        ir_assign = IRAssignment(node.target, value, node.operator)
+        ir_assign.metadata['source_line'] = node.line
+        ir_assign.metadata['source_column'] = node.column
+        
+        return ir_assign
     
     def generate(self, ast: Program) -> IRProgram:
         """
@@ -43,6 +113,9 @@ class IRGenerator:
                     self.ir_program.classes.append(ir_node)
                 elif isinstance(ir_node, IRVariable):
                     self.ir_program.globals.append(ir_node)
+                else:
+                    # Any other top-level statement (calls, loops, if, assignments) goes to main body
+                    self.ir_program.main_body.append(ir_node)
         
         return self.ir_program
     
@@ -67,29 +140,7 @@ class IRGenerator:
         """Generic visitor for unknown node types."""
         return None
     
-    def visit_functiondef(self, node: FunctionDef) -> IRFunction:
-        """Convert FunctionDef to IRFunction."""
-        # Map return type
-        return_type = self.map_type(node.return_type) if node.return_type else IRType.VOID
-        
-        # Convert parameters
-        ir_params = []
-        for param_name, param_type in node.parameters:
-            ir_param_type = self.map_type(param_type) if param_type else IRType.ANY
-            ir_params.append((param_name, ir_param_type))
-        
-        # Convert body
-        ir_body = []
-        for statement in node.body:
-            ir_stmt = self.visit(statement)
-            if ir_stmt:
-                ir_body.append(ir_stmt)
-        
-        ir_func = IRFunction(node.name, ir_params, return_type, ir_body)
-        ir_func.metadata['source_line'] = node.line
-        ir_func.metadata['source_column'] = node.column
-        
-        return ir_func
+
     
     def visit_classdef(self, node: ClassDef) -> IRClass:
         """Convert ClassDef to IRClass."""
@@ -128,15 +179,7 @@ class IRGenerator:
         
         return ir_var
     
-    def visit_assignment(self, node: Assignment) -> IRAssignment:
-        """Convert Assignment to IRAssignment."""
-        value = self.visit(node.value)
-        
-        ir_assign = IRAssignment(node.target, value, node.operator)
-        ir_assign.metadata['source_line'] = node.line
-        ir_assign.metadata['source_column'] = node.column
-        
-        return ir_assign
+
     
     def visit_ifstatement(self, node: IfStatement) -> IRIf:
         """Convert IfStatement to IRIf."""
@@ -269,6 +312,13 @@ class IRGenerator:
     def visit_expressionstatement(self, node: ExpressionStatement) -> Optional[IRNode]:
         """Convert ExpressionStatement."""
         return self.visit(node.expression)
+    
+    def visit_break(self, node: Break) -> IRBreak:
+        """Convert Break to IRBreak."""
+        ir_break = IRBreak()
+        ir_break.metadata['source_line'] = node.line
+        ir_break.metadata['source_column'] = node.column
+        return ir_break
     
     def map_type(self, type_str: Optional[str]) -> IRType:
         """

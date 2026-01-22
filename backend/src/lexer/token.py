@@ -32,6 +32,10 @@ class TokenType(Enum):
     ASSIGN = auto()         # =
     PLUS_ASSIGN = auto()    # +=
     MINUS_ASSIGN = auto()   # -=
+    INCREMENT = auto()      # ++
+    DECREMENT = auto()      # --
+    LSHIFT = auto()         # <<
+    RSHIFT = auto()         # >>
     
     # Comparison
     EQUAL = auto()          # ==

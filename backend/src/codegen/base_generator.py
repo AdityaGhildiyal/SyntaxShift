@@ -53,8 +53,23 @@ class BaseGenerator(ABC):
         # Generate functions
         for func in ir_program.functions:
             self.visit(func)
+            
+        # Generate main body (top-level statements)
+        if ir_program.main_body:
+            self.generate_main(ir_program.main_body)
         
         return '\n'.join(self.generated_code)
+
+    def generate_main(self, statements: List[IRNode]) -> None:
+        """
+        Generate main execution body.
+        By default, just emit statements (like Python).
+        Target languages like C++/Java should override this to wrap in main function.
+        """
+        for stmt in statements:
+            code = self.visit(stmt)
+            if code and code.strip():
+                self.emit(code)
     
     def visit(self, node: IRNode) -> str:
         """
