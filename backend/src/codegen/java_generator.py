@@ -26,6 +26,11 @@ class JavaGenerator(BaseGenerator):
         
         self.generate_imports()
         
+        # Generate standalone classes first (outside Main)
+        for cls in ir_program.classes:
+            self.visit_class(cls, as_static=False)
+        
+        # Generate Main class
         self.emit("public class Main {")
         self.indent()
         
@@ -94,21 +99,37 @@ class JavaGenerator(BaseGenerator):
         if node.is_method:
             access = 'public'
         
-        # Return type
-        return_type = self.map_type(node.return_type)
+        # Infer return type from body if it's VOID but has return statements
+        return_type = node.return_type
+        if return_type == IRType.VOID and node.body:
+            # Check if there are return statements with values
+            for stmt in node.body:
+                if isinstance(stmt, IRReturn) and stmt.value:
+                    # Has a return value, so it's not void
+                    return_type = IRType.ANY
+                    break
         
-        # Parameters
+        # Map return type (use Object for ANY instead of var)
+        if return_type == IRType.ANY:
+            java_return_type = 'Object'
+        else:
+            java_return_type = self.map_type(return_type)
+        
+        # Parameters - filter out 'self' for methods
         params = []
         for param_name, param_type in node.parameters:
+            # Skip 'self' parameter (Python methods)
+            if param_name == 'self':
+                continue
             java_type = self.map_type(param_type) if isinstance(param_type, IRType) else 'Object'
             params.append(f"{java_type} {param_name}")
         params_str = ', '.join(params)
         
         # Method signature
         if node.is_method:
-            self.emit(f"{access} {return_type} {node.name}({params_str}) {{")
+            self.emit(f"{access} {java_return_type} {node.name}({params_str}) {{")
         else:
-            self.emit(f"{access} static {return_type} {node.name}({params_str}) {{")
+            self.emit(f"{access} static {java_return_type} {node.name}({params_str}) {{")
         
         # Method body
         self.indent()
@@ -269,6 +290,12 @@ class JavaGenerator(BaseGenerator):
                 index = self.visit(node.arguments[0])
                 return f"{real_name}[{index}]"
             return f"{real_name}[]"
+        
+        # Handle method calls (object.method)
+        if '.' in node.function_name and not node.function_name.startswith('System.'):
+            # This is a method call: object.method(args)
+            args = ', '.join([self.visit(arg) for arg in node.arguments])
+            return f"{node.function_name}({args})"
 
         args = ', '.join([self.visit(arg) for arg in node.arguments])
         
@@ -296,6 +323,12 @@ class JavaGenerator(BaseGenerator):
         
         if node.function_name in ['input', 'read_input']:
              return "scanner.nextLine()"
+        
+        # Check if this is a constructor call (class instantiation)
+        # In Java, constructors start with uppercase letter
+        if node.function_name and node.function_name[0].isupper() and node.function_name not in func_map:
+            # This is likely a constructor call
+            return f"new {func_name}({args})"
         
         return f"{func_name}({args})"
     

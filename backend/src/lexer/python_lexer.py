@@ -103,6 +103,75 @@ class PythonLexer(BaseLexer):
                 self.tokens.append(self.read_number())
                 continue
             
+            # F-strings (f"..." or f'...')
+            if self.current_char in ('f', 'F') and self.peek(1) in ('"', "'"):
+                self.advance()  # Skip 'f' or 'F'
+                quote = self.current_char
+                self.advance()  # Skip opening quote
+                
+                # Read f-string content
+                parts = []  # Will store string parts and expressions
+                current_part = ''
+                
+                while self.current_char and self.current_char != quote:
+                    if self.current_char == '\\':
+                        # Handle escape sequences
+                        self.advance()
+                        if self.current_char:
+                            current_part += self.current_char
+                            self.advance()
+                    elif self.current_char == '{':
+                        # Check for escaped brace
+                        if self.peek(1) == '{':
+                            current_part += '{'
+                            self.advance()
+                            self.advance()
+                        else:
+                            # Start of expression
+                            if current_part:
+                                parts.append(('string', current_part))
+                                current_part = ''
+                            
+                            self.advance()  # Skip '{'
+                            expr = ''
+                            brace_depth = 1
+                            while self.current_char and brace_depth > 0:
+                                if self.current_char == '{':
+                                    brace_depth += 1
+                                elif self.current_char == '}':
+                                    brace_depth -= 1
+                                    if brace_depth == 0:
+                                        break
+                                expr += self.current_char
+                                self.advance()
+                            
+                            if expr:
+                                parts.append(('expr', expr))
+                            self.advance()  # Skip '}'
+                    elif self.current_char == '}':
+                        # Check for escaped brace
+                        if self.peek(1) == '}':
+                            current_part += '}'
+                            self.advance()
+                            self.advance()
+                        else:
+                            # Unmatched closing brace - just include it
+                            current_part += self.current_char
+                            self.advance()
+                    else:
+                        current_part += self.current_char
+                        self.advance()
+                
+                if current_part:
+                    parts.append(('string', current_part))
+                
+                self.advance()  # Skip closing quote
+                
+                # Create F_STRING token with parts as value
+                # The value is a list of tuples: [('string', 'text'), ('expr', 'variable'), ...]
+                self.tokens.append(Token(TokenType.F_STRING, parts, self.line, self.column))
+                continue
+            
             # Strings (single or double quotes)
             if self.current_char in ('"', "'"):
                 quote = self.current_char

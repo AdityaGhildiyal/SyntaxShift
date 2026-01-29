@@ -434,12 +434,39 @@ class PythonParser(BaseParser):
         return self.parse_postfix()
     
     def parse_postfix(self) -> ASTNode:
-        """Parse postfix expression (function calls, array access)."""
+        """Parse postfix expression (function calls, array access, attribute access)."""
         expr = self.parse_primary()
         
         while self.current_token:
+            # Attribute access (dot notation)
+            if self.current_token.type == TokenType.DOT:
+                self.advance()
+                if self.current_token.type == TokenType.IDENTIFIER:
+                    attr_name = self.current_token.value
+                    self.advance()
+                    
+                    # Check if it's a method call (followed by parentheses)
+                    if self.current_token and self.current_token.type == TokenType.LPAREN:
+                        self.advance()
+                        arguments = self.parse_arguments()
+                        self.expect(TokenType.RPAREN)
+                        
+                        # Create method call: object.method(args)
+                        # Store as FunctionCall with object as first argument
+                        if isinstance(expr, Identifier):
+                            # Method call: obj.method(args) -> method(obj, args)
+                            expr = FunctionCall(f"{expr.name}.{attr_name}", arguments)
+                        else:
+                            # Complex expression
+                            expr = FunctionCall(f"?.{attr_name}", arguments)
+                    else:
+                        # Attribute access: object.attribute
+                        if isinstance(expr, Identifier):
+                            expr = Identifier(f"{expr.name}.{attr_name}")
+                        else:
+                            expr = Identifier(f"?.{attr_name}")
             # Function call
-            if self.current_token.type == TokenType.LPAREN:
+            elif self.current_token.type == TokenType.LPAREN:
                 self.advance()
                 arguments = self.parse_arguments()
                 self.expect(TokenType.RPAREN)
@@ -493,6 +520,51 @@ class PythonParser(BaseParser):
             value = self.current_token.value
             self.advance()
             return Literal(value, 'string')
+        
+        # F-string literal - convert to string concatenation
+        if self.current_token.type == TokenType.F_STRING:
+            parts = self.current_token.value  # List of ('string', text) or ('expr', expr_str)
+            self.advance()
+            
+            if not parts:
+                return Literal('', 'string')
+            
+            if len(parts) == 1 and parts[0][0] == 'string':
+                # Simple string with no interpolation
+                return Literal(parts[0][1], 'string')
+            
+            # Build concatenation expression
+            # For each part, create either a Literal or parse the expression
+            result = None
+            for part_type, part_value in parts:
+                if part_type == 'string':
+                    part_node = Literal(part_value, 'string')
+                else:
+                    # Parse the expression string
+                    # Create a mini-lexer and parser for the expression
+                    from ..lexer.python_lexer import PythonLexer
+                    expr_lexer = PythonLexer(part_value)
+                    expr_tokens = expr_lexer.tokenize()
+                    # Remove EOF token
+                    if expr_tokens and expr_tokens[-1].type == TokenType.EOF:
+                        expr_tokens = expr_tokens[:-1]
+                    
+                    if expr_tokens:
+                        # Create a temporary parser for the expression
+                        temp_parser = PythonParser(expr_tokens + [expr_tokens[0].__class__(TokenType.EOF, None, 0, 0)])
+                        part_node = temp_parser.parse_expression()
+                        # Convert to string using str() function call
+                        part_node = FunctionCall('str', [part_node])
+                    else:
+                        part_node = Literal('', 'string')
+                
+                if result is None:
+                    result = part_node
+                else:
+                    # Concatenate with +
+                    result = BinaryOp(result, '+', part_node)
+            
+            return result if result else Literal('', 'string')
         
         # Boolean literal (True/False keywords)
         if self.current_token.type == TokenType.KEYWORD and self.current_token.value in ['True', 'False']:

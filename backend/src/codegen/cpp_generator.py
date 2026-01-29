@@ -50,18 +50,30 @@ class CppGenerator(BaseGenerator):
     
     def visit_function(self, node: IRFunction) -> str:
         """Generate C++ function."""
-        # Return type
-        return_type = self.map_type(node.return_type)
+        # Infer return type from body if it's VOID but has return statements
+        return_type = node.return_type
+        if return_type == IRType.VOID and node.body:
+            # Check if there are return statements with values
+            for stmt in node.body:
+                if isinstance(stmt, IRReturn) and stmt.value:
+                    # Has a return value, so it's not void
+                    return_type = IRType.ANY
+                    break
         
-        # Parameters
+        cpp_return_type = self.map_type(return_type)
+        
+        # Parameters - filter out 'self' for methods
         params = []
         for param_name, param_type in node.parameters:
+            # Skip 'self' parameter (Python methods)
+            if param_name == 'self':
+                continue
             cpp_type = self.map_type(param_type) if isinstance(param_type, IRType) else 'auto'
             params.append(f"{cpp_type} {param_name}")
         params_str = ', '.join(params) if params else ''
         
         # Function signature
-        self.emit(f"{return_type} {node.name}({params_str}) {{")
+        self.emit(f"{cpp_return_type} {node.name}({params_str}) {{")
         
         # Function body
         self.indent()
@@ -112,7 +124,24 @@ class CppGenerator(BaseGenerator):
         
         if node.initial_value:
             value = self.visit(node.initial_value)
-            self.emit(f"{var_type} {node.name} = {value};")
+            
+            # Handle special input markers
+            if value == "INPUT_INT":
+                # Generate: cout << prompt; int var; cin >> var;
+                if hasattr(self, '_current_input_prompt'):
+                    self.emit(f"cout << {self._current_input_prompt};")
+                    delattr(self, '_current_input_prompt')
+                self.emit(f"{var_type} {node.name};")
+                self.emit(f"cin >> {node.name};")
+            elif value == "INPUT_STRING":
+                # Generate: cout << prompt; string var; getline(cin, var);
+                if hasattr(self, '_current_input_prompt'):
+                    self.emit(f"cout << {self._current_input_prompt};")
+                    delattr(self, '_current_input_prompt')
+                self.emit(f"{var_type} {node.name};")
+                self.emit(f"getline(cin, {node.name});")
+            else:
+                self.emit(f"{var_type} {node.name} = {value};")
         else:
             self.emit(f"{var_type} {node.name};")
         return ""
@@ -218,15 +247,34 @@ class CppGenerator(BaseGenerator):
                 index = self.visit(node.arguments[0])
                 return f"{real_name}[{index}]"
             return f"{real_name}[]"
+        
+        # Handle method calls (object.method)
+        if '.' in node.function_name:
+            # This is a method call: object.method(args)
+            args = ', '.join([self.visit(arg) for arg in node.arguments])
+            return f"{node.function_name}({args})"
 
+        # Special handling for int(input("prompt")) pattern
+        # This is a common Python pattern that needs special C++ handling
+        if node.function_name == 'int' and len(node.arguments) == 1:
+            arg = node.arguments[0]
+            if isinstance(arg, IRCall) and arg.function_name == 'input':
+                # For int(input("prompt")), we need to:
+                # 1. Print the prompt
+                # 2. Read an integer
+                # We'll return a special marker that the variable handler can use
+                if arg.arguments:
+                    prompt = self.visit(arg.arguments[0])
+                    # Store the prompt for later use
+                    self._current_input_prompt = prompt
+                return "INPUT_INT"
+        
         args = ', '.join([self.visit(arg) for arg in node.arguments])
         
         # Map common function names
         func_map = {
             'print': 'cout',
             'len': 'size',
-            'input': 'cin >>', 
-            'int': 'stoi',
             'str': 'to_string',
             'float': 'stof',
         }
@@ -238,14 +286,12 @@ class CppGenerator(BaseGenerator):
                 return f"cout << {args} << endl"
             return "cout << endl"
             
-        # Special handling for cin (input)
-        if func_name == 'cin >>':
-             # Python input(prompt) prints prompt then reads
-             # C++: cout << prompt; cin >> var;
-             # But this is an expression here. C++ cin is statement usually.
-             # Return a placeholder or handle complex logic.
-             # For now, just return a string read (mock)
-             return "read_input()" 
+        # Special handling for input (when not wrapped in int())
+        if node.function_name == 'input':
+            # For string input
+            if args:
+                self._current_input_prompt = args
+            return "INPUT_STRING"
         
         return f"{func_name}({args})"
     

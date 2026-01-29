@@ -112,7 +112,9 @@ class IRGenerator:
                 elif isinstance(ir_node, IRClass):
                     self.ir_program.classes.append(ir_node)
                 elif isinstance(ir_node, IRVariable):
-                    self.ir_program.globals.append(ir_node)
+                    # Put variables in main_body for C++ (not as globals)
+                    # This ensures they come after class definitions
+                    self.ir_program.main_body.append(ir_node)
                 else:
                     # Any other top-level statement (calls, loops, if, assignments) goes to main body
                     self.ir_program.main_body.append(ir_node)

@@ -15,6 +15,7 @@ class TokenType(Enum):
     INTEGER = auto()
     FLOAT = auto()
     STRING = auto()
+    F_STRING = auto()       # Python f-strings
     CHAR = auto()
     IDENTIFIER = auto()
     
